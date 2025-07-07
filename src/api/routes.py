@@ -1,58 +1,58 @@
-from flask import request, jsonify
-from flask_jwt_extended import (
-    create_access_token, jwt_required,
-    get_jwt_identity, unset_jwt_cookies
-)
-from werkzeug.security import generate_password_hash, check_password_hash
+"""
+Este módulo se encarga de definir las rutas (endpoints) para registro y login.
+"""
+
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from api.models import db, User
-from flask import Blueprint
+from api.utils import APIException
 
 api = Blueprint('api', __name__)
 
-# Registro
+# --------------------------- Endpoint de registro ---------------------------
+
 @api.route('/register', methods=['POST'])
 def register():
-    email = request.json.get("email", None)
-    password = request.json.get("password", None)
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
 
     if not email or not password:
-        return jsonify({"msg": "Email and password required"}), 400
+        return jsonify({"msg": "Email y contraseña son requeridos"}), 400
 
+    # Verificar si el usuario ya existe
     if User.query.filter_by(email=email).first():
-        return jsonify({"msg": "User already exists"}), 409
+        return jsonify({"msg": "El usuario ya existe"}), 400
 
-    hashed_password = generate_password_hash(password)
-    user = User(email=email, password=hashed_password, is_active=True)
-    db.session.add(user)
+    new_user = User(email=email, password=password)
+    db.session.add(new_user)
     db.session.commit()
 
-    return jsonify({"msg": "User registered successfully"}), 201
+    return jsonify({"msg": "Usuario registrado exitosamente"}), 201
 
-# Login
+# ---------------------------- Endpoint de login -----------------------------
+
 @api.route('/login', methods=['POST'])
 def login():
-    email = request.json.get("email", None)
-    password = request.json.get("password", None)
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"msg": "Email y contraseña son requeridos"}), 400
 
     user = User.query.filter_by(email=email).first()
-
-    if not user or not check_password_hash(user.password, password):
-        return jsonify({"msg": "Bad email or password"}), 401
+    if not user or not user.check_password(password):
+        return jsonify({"msg": "Credenciales inválidas"}), 401
 
     access_token = create_access_token(identity=user.id)
-    return jsonify(access_token=access_token), 200
+    return jsonify({"token": access_token}), 200
 
-# Logout (simulado)
-@api.route('/logout', methods=['POST'])
-def logout():
-    response = jsonify({"msg": "Logout successful"})
-    unset_jwt_cookies(response)
-    return response, 200
+# --------------------------- Ruta protegida (opcional) ---------------------------
 
-# Ruta protegida
 @api.route('/private', methods=['GET'])
 @jwt_required()
-def private():
+def private_route():
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
-    return jsonify(logged_in_as=user.serialize()), 200
+    return jsonify({"msg": f"Hola, {user.email}. Accediste a una ruta privada!"}), 200
